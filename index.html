@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Universe WASM â QJL+Cache Native Benchmark</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; color:#0ff; font-family:'Courier New',monospace; overflow:hidden; }
+canvas#render { position:fixed; top:0; left:0; width:100%; height:100%; }
+
+/* HUD panels */
+.hud { position:fixed; z-index:10; font-size:12px; line-height:1.5; pointer-events:none; }
+#stats { top:10px; left:10px; background:rgba(0,0,0,0.75); padding:10px; border:1px solid #0ff; border-radius:4px; min-width:220px; }
+#cache-stats { bottom:10px; left:10px; background:rgba(0,0,0,0.75); padding:10px; border:1px solid #0f0; border-radius:4px; min-width:220px; }
+#comparison { top:10px; right:10px; background:rgba(0,0,0,0.75); padding:10px; border:1px solid #ff0; border-radius:4px; min-width:300px; }
+#controls { bottom:10px; right:10px; background:rgba(0,0,0,0.75); padding:10px; border:1px solid #888; border-radius:4px; pointer-events:all; }
+
+.panel-title { color:#fff; font-weight:bold; margin-bottom:4px; font-size:13px; }
+.label { color:#888; }
+.val { color:#0ff; }
+.val-good { color:#0f0; }
+.val-warn { color:#ff0; }
+.val-bad { color:#f44; }
+.mode-active { color:#0ff; font-weight:bold; }
+
+table { border-collapse:collapse; width:100%; margin-top:6px; }
+th { color:#888; text-align:left; padding:2px 6px; border-bottom:1px solid #333; font-size:11px; }
+td { padding:2px 6px; font-size:11px; }
+td.num { text-align:right; font-variant-numeric:tabular-nums; }
+
+button { background:#111; color:#0ff; border:1px solid #0ff; padding:4px 10px; margin:2px; cursor:pointer; font-family:inherit; font-size:12px; border-radius:3px; }
+button:hover { background:#003; }
+button.active { background:#003; border-color:#fff; color:#fff; }
+</style>
+</head>
+<body>
+<canvas id="render"></canvas>
+
+<!-- Stats panel (top-left) -->
+<div id="stats" class="hud">
+  <div class="panel-title">ð Universe WASM â Native Benchmark</div>
+  <div><span class="label">Mode: </span><span id="mode-label" class="mode-active">Exact</span></div>
+  <div><span class="label">Particles: </span><span id="n-particles" class="val">8000</span></div>
+  <div><span class="label">FPS: </span><span id="fps" class="val">--</span></div>
+  <div><span class="label">Force time: </span><span id="force-time" class="val">--</span> ms</div>
+  <div><span class="label">Step time: </span><span id="step-time" class="val">--</span> ms</div>
+  <div><span class="label">Tree nodes: </span><span id="tree-nodes" class="val">--</span></div>
+  <div><span class="label">KE: </span><span id="ke" class="val">--</span></div>
+  <div><span class="label">KE drift: </span><span id="ke-drift" class="val">--</span></div>
+  <div><span class="label">Frame: </span><span id="frame" class="val">0</span></div>
+</div>
+
+<!-- Cache stats (bottom-left) -->
+<div id="cache-stats" class="hud">
+  <div class="panel-title">ð¦ Cache Stats</div>
+  <div><span class="label">Hit rate: </span><span id="hit-rate" class="val">--</span></div>
+  <div><span class="label">Hits: </span><span id="hits" class="val-good">0</span></div>
+  <div><span class="label">Misses: </span><span id="misses" class="val-warn">0</span></div>
+  <div><span class="label">Entries: </span><span id="entries" class="val">0</span></div>
+  <div><span class="label">Saved: </span><span id="saved" class="val-good">0</span> force evals</div>
+</div>
+
+<!-- 3-way comparison (top-right) -->
+<div id="comparison" class="hud">
+  <div class="panel-title">ð 3-Way Comparison (60-frame avg)</div>
+  <table>
+    <tr><th></th><th>FPS</th><th>Force ms</th><th>KE Drift</th><th>Cache</th></tr>
+    <tr id="row-exact"><td class="label">Exact</td><td class="num" id="c-exact-fps">â</td><td class="num" id="c-exact-ft">â</td><td class="num" id="c-exact-ke">â</td><td class="num">N/A</td></tr>
+    <tr id="row-qjl"><td class="label">QJL</td><td class="num" id="c-qjl-fps">â</td><td class="num" id="c-qjl-ft">â</td><td class="num" id="c-qjl-ke">â</td><td class="num">N/A</td></tr>
+    <tr id="row-cache"><td class="label">Cache</td><td class="num" id="c-cache-fps">â</td><td class="num" id="c-cache-ft">â</td><td class="num" id="c-cache-ke">â</td><td class="num" id="c-cache-hr">â</td></tr>
+  </table>
+  <div style="margin-top:6px;"><span class="label">Speedup (Cache vs Exact): </span><span id="speedup" class="val">â</span></div>
+</div>
+
+<!-- Controls (bottom-right) -->
+<div id="controls" class="hud">
+  <div class="panel-title">â¨ï¸ Controls</div>
+  <button id="btn-exact" class="active" onclick="setMode(0)">Exact (0)</button>
+  <button id="btn-qjl" onclick="setMode(1)">QJL (1)</button>
+  <button id="btn-cache" onclick="setMode(2)">Cache (2)</button>
+  <br>
+  <button onclick="resetComparison()">Reset (R)</button>
+  <button onclick="autoRun()">Auto-Run All</button>
+</div>
+
+<script type="module">
+import init, { Universe, morton_key_3d } from './pkg/universe_wasm.js';
+
+// ============================================================
+// THREE.js from CDN
+// ============================================================
+const THREE_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+
+async function loadThree() {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = THREE_CDN;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+// ============================================================
+// Main
+// ============================================================
+const N = 8000;
+const WINDOW = 60; // rolling average window
+
+let universe;
+let positions; // Float32Array view over wasm memory
+let scene, camera, renderer, points;
+let currentMode = 0;
+let frameCount = 0;
+
+// Rolling stats per mode
+const modeStats = [
+  { fps: [], forceTime: [], ke0: null, keLast: null }, // Exact
+  { fps: [], forceTime: [], ke0: null, keLast: null }, // QJL
+  { fps: [], forceTime: [], ke0: null, keLast: null }, // Cache
+];
+
+// Comparison results
+const comparison = [null, null, null]; // {avgFps, avgForceTime, keDrift, hitRate}
+
+await loadThree();
+const wasm = await init();
+
+universe = new Universe(N);
+universe.init_galaxy();
+
+// Create Float32Array view over WASM linear memory (zero-copy!)
+const ptr = universe.particles_ptr();
+const len = universe.buffer_len();
+positions = new Float32Array(wasm.memory.buffer, ptr, len);
+
+// ============================================================
+// Three.js setup
+// ============================================================
+const canvas = document.getElementById('render');
+renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+scene = new THREE.Scene();
+camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
+camera.position.set(0, 0, 800);
+camera.lookAt(0, 0, 0);
+
+// Point cloud geometry
+const geometry = new THREE.BufferGeometry();
+const posAttr = new Float32Array(N * 3);
+geometry.setAttribute('position', new THREE.BufferAttribute(posAttr, 3));
+
+const material = new THREE.PointsMaterial({
+  color: 0x00ffff,
+  size: 2.5,
+  sizeAttenuation: true,
+  transparent: true,
+  opacity: 0.7,
+});
+
+points = new THREE.Points(geometry, material);
+scene.add(points);
+
+// Camera orbit
+let camAngle = 0;
+const CAM_DIST = 800;
+const CAM_SPEED = 0.001;
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ============================================================
+// Controls
+// ============================================================
+const modeNames = ['Exact', 'QJL', 'QJL+Cache'];
+const modeColors = ['#0ff', '#ff0', '#0f0'];
+const btnIds = ['btn-exact', 'btn-qjl', 'btn-cache'];
+
+window.setMode = function(m) {
+  currentMode = m;
+  universe.set_mode(m); // 0=Exact, 1=QJL, 2=Cache
+  document.getElementById('mode-label').textContent = modeNames[m];
+  document.getElementById('mode-label').style.color = modeColors[m];
+  btnIds.forEach((id, i) => {
+    document.getElementById(id).classList.toggle('active', i === m);
+  });
+};
+
+window.resetComparison = function() {
+  for (let i = 0; i < 3; i++) {
+    modeStats[i] = { fps: [], forceTime: [], ke0: null, keLast: null };
+    comparison[i] = null;
+  }
+  updateComparisonTable();
+  universe.reset_stats();
+};
+
+let autoRunning = false;
+let autoRunMode = 0;
+let autoRunFrames = 0;
+
+window.autoRun = function() {
+  autoRunning = true;
+  autoRunMode = 0;
+  autoRunFrames = 0;
+  window.resetComparison();
+  window.setMode(0);
+};
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.key === '0') window.setMode(0);
+  if (e.key === '1') window.setMode(1);
+  if (e.key === '2') window.setMode(2);
+  if (e.key === 'r' || e.key === 'R') window.resetComparison();
+  if (e.key === 'a' || e.key === 'A') window.autoRun();
+});
+
+// ============================================================
+// HUD update
+// ============================================================
+function updateHUD(stepMs, forceMs) {
+  const fps = stepMs > 0 ? (1000 / stepMs) : 0;
+  const ke = universe.compute_ke();
+  const hits = universe.cache_hits();
+  const misses = universe.cache_misses();
+  const entries = universe.cache_size();
+  const hitRate = universe.cache_hit_rate();
+  const treeNodes = universe.tree_node_count();
+  const frame = universe.frame_count();
+
+  // Update rolling stats
+  const s = modeStats[currentMode];
+  s.fps.push(fps);
+  s.forceTime.push(forceMs);
+  if (s.ke0 === null) s.ke0 = ke;
+  s.keLast = ke;
+  if (s.fps.length > WINDOW) s.fps.shift();
+  if (s.forceTime.length > WINDOW) s.forceTime.shift();
+
+  // Live stats
+  const avgFps = s.fps.reduce((a, b) => a + b, 0) / s.fps.length;
+  const avgForce = s.forceTime.reduce((a, b) => a + b, 0) / s.forceTime.length;
+  const keDrift = s.ke0 > 0 ? ((ke - s.ke0) / s.ke0 * 100) : 0;
+
+  document.getElementById('fps').textContent = avgFps.toFixed(1);
+  document.getElementById('force-time').textContent = avgForce.toFixed(1);
+  document.getElementById('step-time').textContent = stepMs.toFixed(1);
+  document.getElementById('tree-nodes').textContent = treeNodes;
+  document.getElementById('ke').textContent = ke.toExponential(3);
+  document.getElementById('ke-drift').textContent = keDrift.toFixed(2) + '%';
+  document.getElementById('frame').textContent = frame;
+
+  // Cache stats
+  document.getElementById('hit-rate').textContent = (hitRate * 100).toFixed(1) + '%';
+  document.getElementById('hits').textContent = hits;
+  document.getElementById('misses').textContent = misses;
+  document.getElementById('entries').textContent = entries;
+  document.getElementById('saved').textContent = hits; // each hit = 1 saved force eval
+
+  // Snapshot comparison after WINDOW frames
+  if (s.fps.length === WINDOW && comparison[currentMode] === null) {
+    comparison[currentMode] = {
+      avgFps: avgFps.toFixed(1),
+      avgForceTime: avgForce.toFixed(1),
+      keDrift: keDrift.toFixed(2) + '%',
+      hitRate: currentMode === 2 ? (hitRate * 100).toFixed(1) + '%' : 'N/A',
+    };
+    updateComparisonTable();
+  }
+
+  // Auto-run logic
+  if (autoRunning) {
+    autoRunFrames++;
+    if (autoRunFrames >= WINDOW + 10) {
+      autoRunMode++;
+      autoRunFrames = 0;
+      if (autoRunMode < 3) {
+        window.setMode(autoRunMode);
+      } else {
+        autoRunning = false;
+      }
+    }
+  }
+}
+
+function updateComparisonTable() {
+  const modes = ['exact', 'qjl', 'cache'];
+  for (let i = 0; i < 3; i++) {
+    const c = comparison[i];
+    document.getElementById(`c-${modes[i]}-fps`).textContent = c ? c.avgFps : 'â';
+    document.getElementById(`c-${modes[i]}-ft`).textContent = c ? c.avgForceTime : 'â';
+    document.getElementById(`c-${modes[i]}-ke`).textContent = c ? c.keDrift : 'â';
+  }
+  if (comparison[2]) {
+    document.getElementById('c-cache-hr').textContent = comparison[2].hitRate;
+  }
+
+  // Speedup
+  if (comparison[0] && comparison[2]) {
+    const exactFt = parseFloat(comparison[0].avgForceTime);
+    const cacheFt = parseFloat(comparison[2].avgForceTime);
+    const speedup = exactFt / cacheFt;
+    const el = document.getElementById('speedup');
+    el.textContent = speedup.toFixed(2) + 'Ã';
+    el.style.color = speedup > 1 ? '#0f0' : '#f44';
+  }
+}
+
+// ============================================================
+// Render loop
+// ============================================================
+function animate() {
+  requestAnimationFrame(animate);
+
+  // Physics step (returns total ms)
+  const stepMs = universe.step();
+  const forceMs = universe.force_time_ms();
+
+  // Re-create Float32Array view each frame â WASM memory can grow
+  // (Vec::push in octree build may trigger realloc, detaching old views)
+  const ptr = universe.particles_ptr();
+  const len = universe.buffer_len();
+  const liveData = new Float32Array(wasm.memory.buffer, ptr, len);
+
+  const posArr = points.geometry.attributes.position.array;
+  for (let i = 0; i < N; i++) {
+    const base = i * 7; // 7-stride
+    posArr[i * 3] = liveData[base];       // x
+    posArr[i * 3 + 1] = liveData[base + 1]; // y
+    posArr[i * 3 + 2] = liveData[base + 2]; // z
+  }
+  points.geometry.attributes.position.needsUpdate = true;
+
+  // Camera orbit
+  camAngle += CAM_SPEED;
+  camera.position.x = Math.cos(camAngle) * CAM_DIST;
+  camera.position.z = Math.sin(camAngle) * CAM_DIST;
+  camera.lookAt(0, 0, 0);
+
+  renderer.render(scene, camera);
+  updateHUD(stepMs, forceMs);
+}
+
+animate();
+</script>
+</body>
+</html>
