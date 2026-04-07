@@ -1,8 +1,8 @@
 [package]
 name = "universe-wasm"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Native WASM N-body engine with QJL + Cache benchmarking"
+description = "Native WASM N-body engine (Barnes-Hut + QJL) + Moiré Parallax Engine for cognitive visual learning"
 
 [lib]
 crate-type = ["cdylib"]
@@ -14,3 +14,8 @@ js-sys = "0.3"
 [profile.release]
 opt-level = 3
 lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 1
