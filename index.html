@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Universe WASM â QJL+Cache Native Benchmark</title>
+<title>Universe WASM — QJL+Cache Native Benchmark</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#000; color:#0ff; font-family:'Courier New',monospace; overflow:hidden; }
@@ -38,7 +38,7 @@ button.active { background:#003; border-color:#fff; color:#fff; }
 
 <!-- Stats panel (top-left) -->
 <div id="stats" class="hud">
-  <div class="panel-title">ð Universe WASM â Native Benchmark</div>
+  <div class="panel-title">🌌 Universe WASM — Native Benchmark</div>
   <div><span class="label">Mode: </span><span id="mode-label" class="mode-active">Exact</span></div>
   <div><span class="label">Particles: </span><span id="n-particles" class="val">8000</span></div>
   <div><span class="label">FPS: </span><span id="fps" class="val">--</span></div>
@@ -52,7 +52,7 @@ button.active { background:#003; border-color:#fff; color:#fff; }
 
 <!-- Cache stats (bottom-left) -->
 <div id="cache-stats" class="hud">
-  <div class="panel-title">ð¦ Cache Stats</div>
+  <div class="panel-title">📦 Cache Stats</div>
   <div><span class="label">Hit rate: </span><span id="hit-rate" class="val">--</span></div>
   <div><span class="label">Hits: </span><span id="hits" class="val-good">0</span></div>
   <div><span class="label">Misses: </span><span id="misses" class="val-warn">0</span></div>
@@ -62,19 +62,19 @@ button.active { background:#003; border-color:#fff; color:#fff; }
 
 <!-- 3-way comparison (top-right) -->
 <div id="comparison" class="hud">
-  <div class="panel-title">ð 3-Way Comparison (60-frame avg)</div>
+  <div class="panel-title">📊 3-Way Comparison (60-frame avg)</div>
   <table>
     <tr><th></th><th>FPS</th><th>Force ms</th><th>KE Drift</th><th>Cache</th></tr>
-    <tr id="row-exact"><td class="label">Exact</td><td class="num" id="c-exact-fps">â</td><td class="num" id="c-exact-ft">â</td><td class="num" id="c-exact-ke">â</td><td class="num">N/A</td></tr>
-    <tr id="row-qjl"><td class="label">QJL</td><td class="num" id="c-qjl-fps">â</td><td class="num" id="c-qjl-ft">â</td><td class="num" id="c-qjl-ke">â</td><td class="num">N/A</td></tr>
-    <tr id="row-cache"><td class="label">Cache</td><td class="num" id="c-cache-fps">â</td><td class="num" id="c-cache-ft">â</td><td class="num" id="c-cache-ke">â</td><td class="num" id="c-cache-hr">â</td></tr>
+    <tr id="row-exact"><td class="label">Exact</td><td class="num" id="c-exact-fps">—</td><td class="num" id="c-exact-ft">—</td><td class="num" id="c-exact-ke">—</td><td class="num">N/A</td></tr>
+    <tr id="row-qjl"><td class="label">QJL</td><td class="num" id="c-qjl-fps">—</td><td class="num" id="c-qjl-ft">—</td><td class="num" id="c-qjl-ke">—</td><td class="num">N/A</td></tr>
+    <tr id="row-cache"><td class="label">Cache</td><td class="num" id="c-cache-fps">—</td><td class="num" id="c-cache-ft">—</td><td class="num" id="c-cache-ke">—</td><td class="num" id="c-cache-hr">—</td></tr>
   </table>
-  <div style="margin-top:6px;"><span class="label">Speedup (Cache vs Exact): </span><span id="speedup" class="val">â</span></div>
+  <div style="margin-top:6px;"><span class="label">Speedup (Cache vs Exact): </span><span id="speedup" class="val">—</span></div>
 </div>
 
 <!-- Controls (bottom-right) -->
 <div id="controls" class="hud">
-  <div class="panel-title">â¨ï¸ Controls</div>
+  <div class="panel-title">⌨️ Controls</div>
   <button id="btn-exact" class="active" onclick="setMode(0)">Exact (0)</button>
   <button id="btn-qjl" onclick="setMode(1)">QJL (1)</button>
   <button id="btn-cache" onclick="setMode(2)">Cache (2)</button>
@@ -293,9 +293,9 @@ function updateComparisonTable() {
   const modes = ['exact', 'qjl', 'cache'];
   for (let i = 0; i < 3; i++) {
     const c = comparison[i];
-    document.getElementById(`c-${modes[i]}-fps`).textContent = c ? c.avgFps : 'â';
-    document.getElementById(`c-${modes[i]}-ft`).textContent = c ? c.avgForceTime : 'â';
-    document.getElementById(`c-${modes[i]}-ke`).textContent = c ? c.keDrift : 'â';
+    document.getElementById(`c-${modes[i]}-fps`).textContent = c ? c.avgFps : '—';
+    document.getElementById(`c-${modes[i]}-ft`).textContent = c ? c.avgForceTime : '—';
+    document.getElementById(`c-${modes[i]}-ke`).textContent = c ? c.keDrift : '—';
   }
   if (comparison[2]) {
     document.getElementById('c-cache-hr').textContent = comparison[2].hitRate;
@@ -307,7 +307,7 @@ function updateComparisonTable() {
     const cacheFt = parseFloat(comparison[2].avgForceTime);
     const speedup = exactFt / cacheFt;
     const el = document.getElementById('speedup');
-    el.textContent = speedup.toFixed(2) + 'Ã';
+    el.textContent = speedup.toFixed(2) + '×';
     el.style.color = speedup > 1 ? '#0f0' : '#f44';
   }
 }
@@ -322,7 +322,7 @@ function animate() {
   const stepMs = universe.step();
   const forceMs = universe.force_time_ms();
 
-  // Re-create Float32Array view each frame â WASM memory can grow
+  // Re-create Float32Array view each frame — WASM memory can grow
   // (Vec::push in octree build may trigger realloc, detaching old views)
   const ptr = universe.particles_ptr();
   const len = universe.buffer_len();

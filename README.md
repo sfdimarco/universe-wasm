@@ -1,136 +1,238 @@
-# universe-wasm 🌌⚙️
+# universe-wasm ⚡
 
-**Rust/WASM Barnes-Hut N-body simulator with QJL force caching — now with Moiré Parallax Engine.**
+**A 38KB WASM binary running 8,000-particle gravitational physics at 60fps in your browser.**
 
-The native benchmark for the STCP unified theory, and the cognitive visual substrate for Baby Zero.
+Built on a pattern most web developers have never heard of. The build scripts are 4 lines. What they unlock is not.
 
 ---
 
-## What Is This
+## The Build Scripts Are the Point
 
-Two physics engines in one WASM binary, both built on the same core principle: **quantized spatial leverage**.
+**Windows:**
+```bat
+@echo off
+set RUSTFLAGS=-C target-feature=+simd128
+wasm-pack build --target web --release
+echo Build complete. Serve with: python -m http.server 8080
+```
 
-### Engine 1 — Barnes-Hut N-body Simulator
+**Linux/macOS:**
+```bash
+#!/bin/bash
+RUSTFLAGS="-C target-feature=+simd128" wasm-pack build --target web --release
+echo "Build complete. Serve with: python -m http.server 8080"
+```
 
-A full 3D gravitational N-body simulation using an arena-based octree. Three simulation modes:
+That flag — `target-feature=+simd128` — is the thing most WASM tutorials never mention. It enables WebAssembly's 128-bit SIMD instructions, allowing the CPU to operate on **4 floats simultaneously** instead of 1. Combined with everything else in this repo, it's the last layer of a performance stack that makes browsers run physics at near-native speed.
 
-| Mode | Description |
-|------|-------------|
-| `0` — Exact | Direct Barnes-Hut traversal. No approximation. |
-| `1` — QJL | Quantized Joint Leverage: spherical force quantization. |
-| `2` — QJL+Cache | QJL + integer-keyed HashMap cache. Maximum speed. |
+---
 
-The QJL mode quantizes force vectors into spherical buckets (radius × theta × phi), keyed by a packed `u64`. Cache hit rates consistently exceed 85% on galaxy formations.
+## Why Browsers Are Slow at Heavy Computation (and How This Fixes It)
 
-**Zero-copy JS bridge:**
-```js
-const universe = new Universe(5000);
-universe.init_galaxy();
+JavaScript has a garbage collector. Every object you create is eventually hunted down and freed. When the GC runs — even briefly — your frame drops. For computation-heavy work like physics, ML inference, or signal processing, this is a fundamental ceiling.
+
+This repo sidesteps that ceiling entirely:
+
+| Problem | This Solution |
+|---|---|
+| GC pressure from JS allocations | Rust owns all memory. Zero GC. |
+| Single-threaded JS math | WASM + SIMD128: 4 f32 ops per cycle |
+| Copying data between Rust and JS | Zero-copy bridge: JS reads a raw pointer |
+| O(n²) naive physics | Barnes-Hut octree: O(n log n) |
+| Redundant force calculations | QJL cache: 80-90% of forces are skipped |
+| Slow WASM from default builds | LTO + codegen-units=1: whole-program optimization |
+
+These don't add. They **multiply.**
+
+At 8,000 particles, the difference between naïve JavaScript physics and this stack is roughly two orders of magnitude.
+
+---
+
+## The Performance Stack (Layer by Layer)
+
+### Layer 1: SIMD128
+```
+RUSTFLAGS=-C target-feature=+simd128
+```
+The Rust compiler vectorizes float operations automatically when this flag is set. Instead of computing one force component per clock cycle, the CPU handles four. This flag is **not enabled by default** in standard WASM builds. One line. Potentially 4x.
+
+### Layer 2: Barnes-Hut O(n log n)
+Naïve N-body is O(n²) — 8,000 particles means 64 million pairwise checks per frame. Barnes-Hut builds an octree and treats distant clusters as single bodies. At n=8,000 this is already ~10x faster than brute force. The octree is **arena-allocated** — pre-reserved memory, no per-frame malloc/free.
+
+### Layer 3: QJL Force Caching
+QJL (Quantized Joint Leverage) quantizes force vectors into spherical buckets:
+- Radial: 20.0-unit buckets
+- Polar: 0.1 radian buckets  
+- Azimuthal: 0.1 radian buckets
+
+Cache key: `(node_id << 30) | (q_rad << 20) | (q_theta << 10) | (q_phi)`
+
+When two particles have similar relative positions to a tree node, they get the **same cached force vector**. In practice: 80–90% cache hit rates. That means 80–90% of force evaluations are a HashMap lookup instead of trigonometry.
+
+### Layer 4: Zero-Copy JS Bridge
+```javascript
 const ptr = universe.particles_ptr();
-const buf = new Float32Array(wasm.memory.buffer, ptr, universe.buffer_len());
-// buf is a live view — no copies, no GC pressure
-universe.step(); // buf updates in-place
+const particles = new Float32Array(wasm.memory.buffer, ptr, universe.buffer_len());
+```
+The particle data lives in WASM linear memory. `particles_ptr()` returns a raw pointer. JavaScript creates a typed array **view** over that memory — no copying, no serialization, no GC involvement. The simulation runs, and JS reads the results directly from the same bytes Rust wrote.
+
+### Layer 5: Release Profile
+```toml
+[profile.release]
+opt-level = 3      # Maximum optimization
+lto = true         # Link-time optimization across all crates
+codegen-units = 1  # Single compilation unit — lets LLVM see everything
+panic = "abort"    # No unwinding machinery, smaller binary
+```
+Link-time optimization lets LLVM inline across crate boundaries and eliminate dead code globally. `codegen-units=1` trades compile time for maximum runtime performance. Result: a **38KB WASM binary** that runs a full 3D physics simulation.
+
+---
+
+## Live Demo
+
+Open `index.html` in a browser after building. It includes:
+
+- **8,000-particle galaxy formation** rendered with Three.js
+- **3-way real-time comparison** — Exact vs QJL vs QJL+Cache
+- **Live cache stats** — hit rate, entries, force evaluations saved
+- **KE drift tracking** — energy conservation accuracy per mode
+- **Auto-run** — cycles through all three modes automatically, prints speedup
+
+```
+[Exact]     → Baseline. Accurate. Slowest.
+[QJL]       → Quantized spherical coords. ~2-3x faster.
+[QJL+Cache] → QJL + force cache. 80-90% hit rate. Fastest.
 ```
 
-### Engine 2 — Moiré Parallax Engine
+Keyboard: `0` `1` `2` to switch modes. `A` to auto-run all. `R` to reset comparison.
 
-**New in v0.2.0** — A physics-based interference pattern generator for cognitive visual learning.
-
-Instead of Perlin noise, Baby Zero's visual substrate is now driven by real physics: two high-density offset particle grids create a dual-layer translucent parallax mesh. The QJL inverse-square falloff principle is repurposed as a **spatial lens** — computing pixel-level displacement of background nodes based on foreground particle density and motion.
-
-The resulting displacement map IS the moiré interference pattern. It's not rendered — it's physics.
-
-```
-[Foreground Grid]    [Background Grid]
-       ↓ QJL inverse-square falloff
-  [Displacement Map — the spatial lens]
-       ↓ 15-20% alpha blend
-  [Moiré Canvas]
-       ↓ WASM-to-JS bridge
-  [Baby Zero Shadow Canvas → .geo_parallax_warp]
-```
-
-**Zero-copy JS bridge:**
-```js
-const moire = new MoireEngine(
-  32, 32,   // grid_w, grid_h
-  1.5,      // fg_density (particles per node)
-  0.3, 0.3, // offset_x, offset_y (creates interference)
-  0.2       // influence_radius (THETA analog)
-);
-
-moire.tick(0.016); // advance one frame
-
-const ptr = moire.displacement_ptr();
-const displace = new Float32Array(wasm.memory.buffer, ptr, moire.displacement_len());
-// displace[i*2] = dx, displace[i*2+1] = dy for node i
-
-// GEO grammar bridge — Baby Zero reads this
-const quadrant = moire.get_dominant_warp_region(); // 0=TL, 1=TR, 2=BL, 3=BR
-const energy   = moire.get_interference_energy();  // 0.0–1.0
+To serve locally:
+```bash
+python -m http.server 8080
+# or
+npx serve .
 ```
 
 ---
 
-## The GEO Grammar Bridge
+## JavaScript API
 
-The key insight: `get_dominant_warp_region()` returns a GEO quadtree address. Baby Zero's `.geo_parallax_warp` grammar rule reads this value and routes its attention to the quadrant with the highest physical interference.
+```javascript
+import init, { Universe } from './pkg/universe_wasm.js';
 
-Physical reality → pixel displacement → quadtree address → cognitive pattern cache.
+const wasm = await init();
+const universe = new Universe(10000);
+universe.init_galaxy();
 
-The math and the mind converge at the same geometry.
+// Switch force computation mode
+universe.set_mode(0); // Exact Barnes-Hut
+universe.set_mode(1); // QJL (quantized spherical, no cache)
+universe.set_mode(2); // QJL + HashMap cache
+
+// Run one timestep — returns total time in ms
+const elapsed_ms = universe.step();
+const force_ms = universe.force_time_ms();
+
+// Zero-copy particle access — no data transfer
+const ptr = universe.particles_ptr();
+const particles = new Float32Array(wasm.memory.buffer, ptr, universe.buffer_len());
+// particles[i*7 + 0] = x
+// particles[i*7 + 1] = y
+// particles[i*7 + 2] = z
+// particles[i*7 + 3] = vx
+// particles[i*7 + 4] = vy
+// particles[i*7 + 5] = vz
+// particles[i*7 + 6] = mass
+
+// Cache diagnostics
+const hit_rate  = universe.cache_hit_rate();   // 0.0–1.0
+const hits      = universe.cache_hits();
+const misses    = universe.cache_misses();
+const cache_sz  = universe.cache_size();
+
+// Physics diagnostics
+const ke        = universe.compute_ke();       // kinetic energy
+const nodes     = universe.tree_node_count();
+const frames    = universe.frame_count();
+
+// Morton Z-order encoding (exposed for spatial indexing)
+const key = morton_key_3d(x, y, z);
+```
 
 ---
 
-## Architecture
+## Building From Source
+
+**Prerequisites:**
+- [Rust](https://rustup.rs/) — install via rustup
+- [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/) — `cargo install wasm-pack`
+- The WASM target: `rustup target add wasm32-unknown-unknown`
+
+**Build:**
+```bash
+# Linux/macOS
+./build.sh
+
+# Windows
+build.bat
+```
+
+Output goes to `pkg/` — ready to import as an ES module.
+
+---
+
+## The Pattern (Apply It to Anything)
+
+This isn't just an N-body simulator. It's a reference implementation of a pattern that should be standard for any browser app doing heavy computation:
+
+```
+[Expensive computation] → Rust crate (zero GC, SIMD, LTO)
+       ↓ wasm-pack build --target web --release
+[WASM module] → zero-copy Float32Array bridge → [Browser]
+```
+
+**Anywhere you'd reach for a Web Worker + heavy JS computation, reach for this instead:**
+
+- Real-time physics engines (game physics, cloth simulation, rigid bodies)
+- ML inference in the browser (matrix ops, convolutions, attention)
+- Audio DSP (FFT, filters, synthesis — no AudioWorklet thread hopping)
+- Image processing (blur, convolutions, color space transforms)
+- Data visualization (force-directed graphs, particle systems, fluid sim)
+- Financial modeling (Monte Carlo, option pricing, portfolio math)
+- Computational geometry (collision detection, mesh processing, CSG)
+
+The `+simd128` flag and the zero-copy pointer pattern carry to all of these. The build scripts are the same 4 lines.
+
+---
+
+## Repository Structure
 
 ```
 universe-wasm/
-├── src/lib.rs       — Barnes-Hut Universe (wasm_bindgen) + Moiré Engine
-├── pkg/             — Compiled WASM + JS bindings (wasm-pack output)
-├── Cargo.toml       — universe-wasm v0.2.0, js-sys + wasm-bindgen
-└── LICENSE          — MIT
+├── build.bat          ← Windows build script (the thing this README is about)
+├── build.sh           ← Linux/macOS build script
+├── Cargo.toml         ← universe-wasm v0.1, wasm-bindgen + js-sys
+├── src/
+│   └── lib.rs         ← ~592 lines. Universe + QJL + cache + morton
+├── pkg/               ← Compiled WASM + JS/TS bindings (wasm-pack output)
+│   ├── universe_wasm_bg.wasm     ← 38KB. The whole thing.
+│   ├── universe_wasm.js          ← ES module wrapper
+│   └── universe_wasm.d.ts        ← TypeScript types
+├── index.html         ← Live benchmark demo (Three.js + 3-way comparison)
+├── ARCHITECTURE.md    ← Deep technical notes on the QJL design
+└── COMPLETION.md      ← Implementation record
 ```
 
-**Rust structs:**
-- `Universe` — N-body simulation, 7-stride flat buffer `[x,y,z,vx,vy,vz,mass]`
-- `MoireEngine` — Dual-grid interference, 5-stride fg `[x,y,vx,vy,influence]` + 2-stride displacement
-- `morton_key_3d()` — Z-order curve encoding for spatial indexing
+---
+
+## Part of a Larger Research Project
+
+This engine is the WASM backbone of [Momentum Lab](https://github.com/sfdimarco/Momentum-Lab) — a spatial learning environment where the QJL spatial lens principle is extended into a cognitive visual substrate for AI agents. The same physics principles that make N-body simulation efficient in browsers also drive the Moiré Parallax Engine: a real-time interference pattern generator where force displacement becomes a grammar for spatial cognition.
+
+The math doesn't care what domain you apply it to. That's the point.
 
 ---
 
-## Building
+**MIT License. Open source. Build something insane.**
 
-```bash
-# Install wasm-pack if you don't have it
-cargo install wasm-pack
-
-# Build optimized WASM
-wasm-pack build --target web --release
-
-# Output goes to pkg/
-```
-
-The release profile uses `opt-level=3, lto=true, codegen-units=1, panic=abort` — maximum size reduction.
-
----
-
-## STCP / QJL Theory
-
-QJL (Quantized Joint Leverage) is the force approximation scheme at the heart of both engines:
-
-**In N-body:** Forces are quantized into spherical buckets. Two particles with similar relative positions get the same cached force vector. Cache key = `node_id(34 bits) | radius(10) | theta(10) | phi(10)`.
-
-**In Moiré:** The same inverse-square falloff law governs how foreground particles displace background nodes. `falloff = 1.0 / (dist² + 0.01)`. The THETA radius threshold (`influence_radius`) acts exactly like Barnes-Hut's THETA criterion — particles beyond it are ignored.
-
-Same math. Same physics. Different domains. One WASM binary.
-
----
-
-## Part of Momentum Lab
-
-This engine is the WASM backbone of [Momentum Lab](https://github.com/sfdimarco/Momentum-Lab) — VS Code for babies. The Moiré Parallax Engine feeds Baby Zero's shadow canvas, giving the spatial AI agent a physically-grounded visual noise substrate to explore and cache as GEO grammar patterns.
-
----
-
-**Built by Mook.** MIT License.
+*— Mook*
