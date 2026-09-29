@@ -39,7 +39,10 @@ This repo sidesteps that ceiling entirely:
 | Single-threaded JS math | WASM + SIMD128: 4 f32 ops per cycle |
 | Copying data between Rust and JS | Zero-copy bridge: JS reads a raw pointer |
 | O(n²) naive physics | Barnes-Hut octree: O(n log n) |
-| Redundant force calculations | QJL cache: 80-90% of forces are skipped |
+| Redundant force calculations | QFC cache: 80-90% of forces are skipped |
+
+> **Naming note:** earlier versions called this technique *QJL*. It was renamed **Quantized Force Caching (QFC)** to avoid confusion with Quantized Johnson–Lindenstrauss, an unrelated method in machine-learning research.
+
 | Slow WASM from default builds | LTO + codegen-units=1: whole-program optimization |
 
 These don't add. They **multiply.**
@@ -59,8 +62,8 @@ The Rust compiler vectorizes float operations automatically when this flag is se
 ### Layer 2: Barnes-Hut O(n log n)
 Naïve N-body is O(n²) — 8,000 particles means 64 million pairwise checks per frame. Barnes-Hut builds an octree and treats distant clusters as single bodies. At n=8,000 this is already ~10x faster than brute force. The octree is **arena-allocated** — pre-reserved memory, no per-frame malloc/free.
 
-### Layer 3: QJL Force Caching
-QJL (Quantized Joint Leverage) quantizes force vectors into spherical buckets:
+### Layer 3: QFC Force Caching
+Quantized Force Caching (QFC) quantizes force vectors into spherical buckets:
 - Radial: 20.0-unit buckets
 - Polar: 0.1 radian buckets  
 - Azimuthal: 0.1 radian buckets
@@ -93,15 +96,15 @@ Link-time optimization lets LLVM inline across crate boundaries and eliminate de
 Open `index.html` in a browser after building. It includes:
 
 - **8,000-particle galaxy formation** rendered with Three.js
-- **3-way real-time comparison** — Exact vs QJL vs QJL+Cache
+- **3-way real-time comparison** — Exact vs QFC vs Quantized + Cache
 - **Live cache stats** — hit rate, entries, force evaluations saved
 - **KE drift tracking** — energy conservation accuracy per mode
 - **Auto-run** — cycles through all three modes automatically, prints speedup
 
 ```
 [Exact]     → Baseline. Accurate. Slowest.
-[QJL]       → Quantized spherical coords. ~2-3x faster.
-[QJL+Cache] → QJL + force cache. 80-90% hit rate. Fastest.
+[QFC]       → Quantized spherical coords. ~2-3x faster.
+[Quantized + Cache] → QFC + force cache. 80-90% hit rate. Fastest.
 ```
 
 Keyboard: `0` `1` `2` to switch modes. `A` to auto-run all. `R` to reset comparison.
@@ -126,8 +129,8 @@ universe.init_galaxy();
 
 // Switch force computation mode
 universe.set_mode(0); // Exact Barnes-Hut
-universe.set_mode(1); // QJL (quantized spherical, no cache)
-universe.set_mode(2); // QJL + HashMap cache
+universe.set_mode(1); // QFC (quantized spherical, no cache)
+universe.set_mode(2); // QFC + HashMap cache
 
 // Run one timestep — returns total time in ms
 const elapsed_ms = universe.step();
@@ -213,13 +216,13 @@ universe-wasm/
 ├── build.sh           ← Linux/macOS build script
 ├── Cargo.toml         ← universe-wasm v0.1, wasm-bindgen + js-sys
 ├── src/
-│   └── lib.rs         ← ~592 lines. Universe + QJL + cache + morton
+│   └── lib.rs         ← ~592 lines. Universe + QFC + cache + morton
 ├── pkg/               ← Compiled WASM + JS/TS bindings (wasm-pack output)
 │   ├── universe_wasm_bg.wasm     ← 38KB. The whole thing.
 │   ├── universe_wasm.js          ← ES module wrapper
 │   └── universe_wasm.d.ts        ← TypeScript types
 ├── index.html         ← Live benchmark demo (Three.js + 3-way comparison)
-├── ARCHITECTURE.md    ← Deep technical notes on the QJL design
+├── ARCHITECTURE.md    ← Deep technical notes on the QFC design
 └── COMPLETION.md      ← Implementation record
 ```
 
@@ -227,7 +230,7 @@ universe-wasm/
 
 ## Part of a Larger Research Project
 
-This engine is the WASM backbone of [Momentum Lab](https://github.com/sfdimarco/Momentum-Lab) — a spatial learning environment where the QJL spatial lens principle is extended into a cognitive visual substrate for AI agents. The same physics principles that make N-body simulation efficient in browsers also drive the Moiré Parallax Engine: a real-time interference pattern generator where force displacement becomes a grammar for spatial cognition.
+This engine is the WASM backbone of [Momentum Lab](https://github.com/sfdimarco/Momentum-Lab) — a spatial learning environment where the QFC spatial lens principle is extended into a cognitive visual substrate for AI agents. The same physics principles that make N-body simulation efficient in browsers also drive the Moiré Parallax Engine: a real-time interference pattern generator where force displacement becomes a grammar for spatial cognition.
 
 The math doesn't care what domain you apply it to. That's the point.
 

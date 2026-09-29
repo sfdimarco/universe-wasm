@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Universe WASM — QJL+Cache Native Benchmark</title>
+<title>Universe WASM — Quantized+Cache Native Benchmark</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#000; color:#0ff; font-family:'Courier New',monospace; overflow:hidden; }
@@ -66,7 +66,7 @@ button.active { background:#003; border-color:#fff; color:#fff; }
   <table>
     <tr><th></th><th>FPS</th><th>Force ms</th><th>KE Drift</th><th>Cache</th></tr>
     <tr id="row-exact"><td class="label">Exact</td><td class="num" id="c-exact-fps">—</td><td class="num" id="c-exact-ft">—</td><td class="num" id="c-exact-ke">—</td><td class="num">N/A</td></tr>
-    <tr id="row-qjl"><td class="label">QJL</td><td class="num" id="c-qjl-fps">—</td><td class="num" id="c-qjl-ft">—</td><td class="num" id="c-qjl-ke">—</td><td class="num">N/A</td></tr>
+    <tr id="row-qjl"><td class="label">Quantized</td><td class="num" id="c-qjl-fps">—</td><td class="num" id="c-qjl-ft">—</td><td class="num" id="c-qjl-ke">—</td><td class="num">N/A</td></tr>
     <tr id="row-cache"><td class="label">Cache</td><td class="num" id="c-cache-fps">—</td><td class="num" id="c-cache-ft">—</td><td class="num" id="c-cache-ke">—</td><td class="num" id="c-cache-hr">—</td></tr>
   </table>
   <div style="margin-top:6px;"><span class="label">Speedup (Cache vs Exact): </span><span id="speedup" class="val">—</span></div>
@@ -76,7 +76,7 @@ button.active { background:#003; border-color:#fff; color:#fff; }
 <div id="controls" class="hud">
   <div class="panel-title">⌨️ Controls</div>
   <button id="btn-exact" class="active" onclick="setMode(0)">Exact (0)</button>
-  <button id="btn-qjl" onclick="setMode(1)">QJL (1)</button>
+  <button id="btn-qjl" onclick="setMode(1)">Quantized (1)</button>
   <button id="btn-cache" onclick="setMode(2)">Cache (2)</button>
   <br>
   <button onclick="resetComparison()">Reset (R)</button>
@@ -116,7 +116,7 @@ let frameCount = 0;
 // Rolling stats per mode
 const modeStats = [
   { fps: [], forceTime: [], ke0: null, keLast: null }, // Exact
-  { fps: [], forceTime: [], ke0: null, keLast: null }, // QJL
+  { fps: [], forceTime: [], ke0: null, keLast: null }, // Quantized
   { fps: [], forceTime: [], ke0: null, keLast: null }, // Cache
 ];
 
@@ -177,13 +177,13 @@ window.addEventListener('resize', () => {
 // ============================================================
 // Controls
 // ============================================================
-const modeNames = ['Exact', 'QJL', 'QJL+Cache'];
+const modeNames = ['Exact', 'Quantized', 'Quantized+Cache'];
 const modeColors = ['#0ff', '#ff0', '#0f0'];
 const btnIds = ['btn-exact', 'btn-qjl', 'btn-cache'];
 
 window.setMode = function(m) {
   currentMode = m;
-  universe.set_mode(m); // 0=Exact, 1=QJL, 2=Cache
+  universe.set_mode(m); // 0=Exact, 1=Quantized, 2=Cache
   document.getElementById('mode-label').textContent = modeNames[m];
   document.getElementById('mode-label').style.color = modeColors[m];
   btnIds.forEach((id, i) => {

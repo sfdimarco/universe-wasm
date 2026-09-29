@@ -1,5 +1,5 @@
 // ============================================================
-// universe-wasm: Native WASM N-Body Engine with QJL + Cache
+// universe-wasm: Native WASM N-Body Engine with Quantized + Cache
 // ============================================================
 // Arena-based octree, zero-copy JS bridge,
 // integer-keyed force cache (HashMap<u64, [f32;3]>)
@@ -66,7 +66,7 @@ impl OctNode {
 pub struct Universe {
     particles: Vec<f32>,
     n: usize,
-    mode: u32, // 0=Exact, 1=QJL, 2=QJL+Cache
+    mode: u32, // 0=Exact, 1=QFC, 2=Quantized + Cache
     arena: Vec<OctNode>,
     next_node_id: u32,
     cache: HashMap<u64, [f32; 3]>,
@@ -426,7 +426,7 @@ fn traverse_exact(
     (fx, fy, fz)
 }
 
-/// QJL traversal with optional cache (arena borrowed immutably, cache mutably)
+/// QFC traversal with optional cache (arena borrowed immutably, cache mutably)
 fn traverse_qjl(
     arena: &[OctNode],
     cache: &mut HashMap<u64, [f32; 3]>,
@@ -460,7 +460,7 @@ fn traverse_qjl(
     (fx, fy, fz)
 }
 
-/// Compute force using QJL spherical quantization, with optional cache
+/// Compute force using QFC spherical quantization, with optional cache
 #[inline]
 fn qjl_force(
     cache: &mut HashMap<u64, [f32; 3]>,

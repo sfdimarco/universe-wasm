@@ -1,4 +1,4 @@
-# Completion Report: Universe-WASM QJL Engine
+# Completion Report: Universe-WASM QFC Engine
 
 **Status**: COMPLETE
 
@@ -41,13 +41,13 @@ Universe::compute_ke() → f64
    - Cartesian force: F*dx/d, F*dy/d, F*dz/d
    - Baseline accuracy reference
 
-2. **Mode 1: QJL (Quantized Spherical)**
+2. **Mode 1: QFC (Quantized Spherical)**
    - Converts to spherical coords after theta fires
    - Quantizes: q_r (20.0 buckets), q_θ (0.1 rad), q_φ (0.1 rad)
    - Converts back to Cartesian
    - No caching
 
-3. **Mode 2: QJL + Cache**
+3. **Mode 2: Quantized + Cache**
    - Same quantization as Mode 1
    - HashMap<u64, [f32; 3]> for force vectors
    - Cache key packing: (node_id << 30) | (q_r << 20) | (q_θ << 10) | (q_φ)
@@ -111,7 +111,7 @@ let cache_key = ((node_id as u64) << 30)
 ```
 Packs node (30 bits) + radius bucket (10 bits) + theta bucket (10 bits) + phi bucket (10 bits)
 
-### QJL Quantization
+### QFC Quantization
 ```rust
 let q_rad = (dist / QUANT_LEVEL).round() * QUANT_LEVEL;
 let theta = (dz / dist).max(-1.0).min(1.0).acos();
@@ -166,20 +166,20 @@ const t0 = performance.now();
 universe.step();
 const exact_time = performance.now() - t0;
 
-// Mode 1: QJL (no cache)
+// Mode 1: QFC (no cache)
 universe.set_mode(1);
 const t1 = performance.now();
 universe.step();
 const qjl_time = performance.now() - t1;
 
-// Mode 2: QJL + cache
+// Mode 2: QFC + cache
 universe.set_mode(2);
 const t2 = performance.now();
 universe.step();
 const cached_time = performance.now() - t2;
 
 const hit_rate = 100 * universe.cache_hits() / (universe.cache_hits() + universe.cache_misses());
-console.log(`Speedup QJL: ${(exact_time/qjl_time).toFixed(2)}x`);
+console.log(`Speedup QFC: ${(exact_time/qjl_time).toFixed(2)}x`);
 console.log(`Speedup Cache: ${(exact_time/cached_time).toFixed(2)}x, hit_rate: ${hit_rate.toFixed(1)}%`);
 ```
 

@@ -2,7 +2,7 @@
 name = "universe-wasm"
 version = "0.1.0"
 edition = "2021"
-description = "Native WASM N-body engine with QJL + Cache benchmarking"
+description = "Native WASM N-body engine with Quantized + Cache benchmarking"
 
 [lib]
 crate-type = ["cdylib"]

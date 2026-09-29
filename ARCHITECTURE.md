@@ -1,10 +1,10 @@
-# Universe-WASM: Rust/WASM N-Body QJL Engine
+# Universe-WASM: Rust/WASM N-Body QFC Engine
 
 ## Overview
 Complete Rust/WASM N-body simulation engine with three force computation modes:
 - **Mode 0**: Exact Barnes-Hut (baseline)
-- **Mode 1**: QJL quantized spherical coords (no cache)
-- **Mode 2**: QJL with HashMap force caching
+- **Mode 1**: QFC quantized spherical coords (no cache)
+- **Mode 2**: QFC with HashMap force caching
 
 ## Files
 
@@ -51,7 +51,7 @@ Universe::compute_ke() -> f64
    - If theta < THETA: treat as body; else recurse to 8 children
 3. Accumulate fx, fy, fz
 
-**Mode 1: QJL (Quantized Spherical)**
+**Mode 1: QFC (Quantized Spherical)**
 1. `compute_force_qjl()` → `traverse_qjl(use_cache=false)`
 2. After theta criterion fires:
    - Convert to spherical: r, θ=acos(dz/r), φ=atan2(dy,dx)
@@ -59,7 +59,7 @@ Universe::compute_ke() -> f64
    - Force magnitude: `F = G*m / (q_r)²`
    - Convert back to Cartesian: fx, fy, fz with sin(q_θ), cos(q_φ), etc.
 
-**Mode 2: QJL + Cache**
+**Mode 2: Quantized + Cache**
 1. Same as Mode 1 but with HashMap<u64, [f32;3]>
 2. Cache key: `(node_id << 30) | (q_r_bucket << 20) | (q_θ_bucket << 10) | (q_φ_bucket)`
    - q_r_bucket = (dist / QUANT_LEVEL) as u32
@@ -121,4 +121,4 @@ RUSTFLAGS="-C target-feature=+simd128" wasm-pack build --target web --release
 ## Expected Performance
 - JS prototype: 45% cache hit rate (but slow due to Map overhead)
 - Rust version: Integer hash map should eliminate overhead, achieving actual speedup
-- Three-mode benchmark shows trade-off: Exact (slow, precise) → QJL (faster) → Cached (fastest, quantized)
+- Three-mode benchmark shows trade-off: Exact (slow, precise) → QFC (faster) → Cached (fastest, quantized)
